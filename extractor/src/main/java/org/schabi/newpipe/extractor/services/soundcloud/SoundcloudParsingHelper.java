@@ -7,85 +7,122 @@ import com.grack.nanojson.JsonParserException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.schabi.newpipe.extractor.Downloader;
+import org.jsoup.select.Elements;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.channel.ChannelInfoItemsCollector;
+import org.schabi.newpipe.extractor.downloader.Downloader;
+import org.schabi.newpipe.extractor.downloader.Response;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
+import org.schabi.newpipe.extractor.services.soundcloud.extractors.SoundcloudChannelInfoItemExtractor;
+import org.schabi.newpipe.extractor.services.soundcloud.extractors.SoundcloudStreamExtractor;
+import org.schabi.newpipe.extractor.services.soundcloud.extractors.SoundcloudStreamInfoItemExtractor;
 import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector;
 import org.schabi.newpipe.extractor.utils.Parser;
 import org.schabi.newpipe.extractor.utils.Parser.RegexException;
+import org.schabi.newpipe.extractor.utils.Utils;
 
 import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.HashMap;
+import java.util.*;
 
+import static java.util.Collections.singletonList;
+import static org.schabi.newpipe.extractor.ServiceList.SoundCloud;
+import static org.schabi.newpipe.extractor.utils.JsonUtils.EMPTY_STRING;
+import static org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty;
 import static org.schabi.newpipe.extractor.utils.Utils.replaceHttpWithHttps;
 
 public class SoundcloudParsingHelper {
+    private static final String HARDCODED_CLIENT_ID = "Uz4aPhG7GAl1VYGOnvOPW1wQ0M6xKtA9"; // Updated on 16/03/20
     private static String clientId;
-    
+
     private SoundcloudParsingHelper() {
     }
 
-    public static String clientId() throws ReCaptchaException, IOException, RegexException {
-        if (clientId != null && !clientId.isEmpty()) return clientId;
+    public static String clientId() throws ExtractionException, IOException {
+        if (!isNullOrEmpty(clientId)) return clientId;
 
         Downloader dl = NewPipe.getDownloader();
-        String response = dl.download("https://soundcloud.com");
+        clientId = HARDCODED_CLIENT_ID;
+        if (checkIfHardcodedClientIdIsValid()) {
+            return clientId;
+        }
 
-        Document doc = Jsoup.parse(response);
-        Element jsElement = doc.select("script[src^=https://a-v2.sndcdn.com/assets/app]").first();
-
+        final Response download = dl.get("https://soundcloud.com");
+        final String responseBody = download.responseBody();
         final String clientIdPattern = ",client_id:\"(.*?)\"";
 
-        try {
-            final HashMap<String, String> headers = new HashMap<>();
-            headers.put("Range", "bytes=0-16384");
-            String js = dl.download(jsElement.attr("src"), headers);
+        Document doc = Jsoup.parse(responseBody);
+        final Elements possibleScripts = doc.select("script[src*=\"sndcdn.com/assets/\"][src$=\".js\"]");
+        // The one containing the client id will likely be the last one
+        Collections.reverse(possibleScripts);
 
-            return clientId = Parser.matchGroup1(clientIdPattern, js);
-        } catch (IOException | RegexException ignored) {
-            // Ignore it and proceed to download the whole js file
+        final HashMap<String, List<String>> headers = new HashMap<>();
+        headers.put("Range", singletonList("bytes=0-16384"));
+
+        for (Element element : possibleScripts) {
+            final String srcUrl = element.attr("src");
+            if (!isNullOrEmpty(srcUrl)) {
+                try {
+                    return clientId = Parser.matchGroup1(clientIdPattern, dl.get(srcUrl, headers).responseBody());
+                } catch (RegexException ignored) {
+                    // Ignore it and proceed to try searching other script
+                }
+            }
         }
 
-        String js = dl.download(jsElement.attr("src"));
-        return clientId = Parser.matchGroup1(clientIdPattern, js);
+        // Officially give up
+        throw new ExtractionException("Couldn't extract client id");
     }
 
-    public static String toDateString(String time) throws ParsingException {
+    static boolean checkIfHardcodedClientIdIsValid() {
         try {
-            Date date;
-            // Have two date formats, one for the 'api.soundc...' and the other 'api-v2.soundc...'.
-            try {
-                date = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").parse(time);
-            } catch (Exception e) {
-                date = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss +0000").parse(time);
-            }
-
-            SimpleDateFormat newDateFormat = new SimpleDateFormat("yyyy-MM-dd");
-            return newDateFormat.format(date);
-        } catch (ParseException e) {
-            throw new ParsingException(e.getMessage(), e);
+            SoundcloudStreamExtractor e = (SoundcloudStreamExtractor) SoundCloud
+                    .getStreamExtractor("https://soundcloud.com/liluzivert/do-what-i-want-produced-by-maaly-raw-don-cannon");
+            e.fetchPage();
+            return e.getAudioStreams().size() >= 1;
+        } catch (Exception ignored) {
+            // No need to throw an exception here. If something went wrong, the client_id is wrong
+            return false;
         }
+    }
+
+    public static Calendar parseDateFrom(String textualUploadDate) throws ParsingException {
+        Date date;
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+            sdf.setTimeZone(TimeZone.getTimeZone("GMT"));
+            date = sdf.parse(textualUploadDate);
+        } catch (ParseException e1) {
+            try {
+                date = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss +0000").parse(textualUploadDate);
+            } catch (ParseException e2) {
+                throw new ParsingException("Could not parse date: \"" + textualUploadDate + "\"" + ", " + e1.getMessage(), e2);
+            }
+        }
+
+        final Calendar uploadDate = Calendar.getInstance();
+        uploadDate.setTime(date);
+        return uploadDate;
     }
 
     /**
      * Call the endpoint "/resolve" of the api.<p>
-     * 
+     * <p>
      * See https://developers.soundcloud.com/docs/api/reference#resolve
      */
-    public static JsonObject resolveFor(Downloader downloader, String url) throws IOException, ReCaptchaException, ParsingException {
-        String apiUrl = "https://api.soundcloud.com/resolve"
+    public static JsonObject resolveFor(Downloader downloader, String url) throws IOException, ExtractionException {
+        String apiUrl = "https://api-v2.soundcloud.com/resolve"
                 + "?url=" + URLEncoder.encode(url, "UTF-8")
                 + "&client_id=" + clientId();
 
         try {
-            return JsonParser.object().from(downloader.download(apiUrl));
+            final String response = downloader.get(apiUrl, SoundCloud.getLocalization()).responseBody();
+            return JsonParser.object().from(response);
         } catch (JsonParserException e) {
             throw new ParsingException("Could not parse json response", e);
         }
@@ -98,8 +135,8 @@ public class SoundcloudParsingHelper {
      */
     public static String resolveUrlWithEmbedPlayer(String apiUrl) throws IOException, ReCaptchaException, ParsingException {
 
-        String response = NewPipe.getDownloader().download("https://w.soundcloud.com/player/?url="
-                + URLEncoder.encode(apiUrl, "UTF-8"));
+        String response = NewPipe.getDownloader().get("https://w.soundcloud.com/player/?url="
+                + URLEncoder.encode(apiUrl, "UTF-8"), SoundCloud.getLocalization()).responseBody();
 
         return Jsoup.parse(response).select("link[rel=\"canonical\"]").first().attr("abs:href");
     }
@@ -111,8 +148,11 @@ public class SoundcloudParsingHelper {
      */
     public static String resolveIdWithEmbedPlayer(String url) throws IOException, ReCaptchaException, ParsingException {
 
-        String response = NewPipe.getDownloader().download("https://w.soundcloud.com/player/?url="
-                + URLEncoder.encode(url, "UTF-8"));
+        String response = NewPipe.getDownloader().get("https://w.soundcloud.com/player/?url="
+                + URLEncoder.encode(url, "UTF-8"), SoundCloud.getLocalization()).responseBody();
+        // handle playlists / sets different and get playlist id via uir field in JSON
+        if (url.contains("sets") && !url.endsWith("sets") && !url.endsWith("sets/"))
+            return Parser.matchGroup1("\"uri\":\\s*\"https:\\/\\/api\\.soundcloud\\.com\\/playlists\\/((\\d)*?)\"", response);
         return Parser.matchGroup1(",\"id\":(([^}\\n])*?),", response);
     }
 
@@ -140,7 +180,7 @@ public class SoundcloudParsingHelper {
      * @return the next streams url, empty if don't have
      */
     public static String getUsersFromApi(ChannelInfoItemsCollector collector, String apiUrl) throws IOException, ReCaptchaException, ParsingException {
-        String response = NewPipe.getDownloader().download(apiUrl);
+        String response = NewPipe.getDownloader().get(apiUrl, SoundCloud.getLocalization()).responseBody();
         JsonObject responseObject;
         try {
             responseObject = JsonParser.object().from(response);
@@ -191,7 +231,7 @@ public class SoundcloudParsingHelper {
      * @return the next streams url, empty if don't have
      */
     public static String getStreamsFromApi(StreamInfoItemsCollector collector, String apiUrl, boolean charts) throws IOException, ReCaptchaException, ParsingException {
-        String response = NewPipe.getDownloader().download(apiUrl);
+        String response = NewPipe.getDownloader().get(apiUrl, SoundCloud.getLocalization()).responseBody();
         JsonObject responseObject;
         try {
             responseObject = JsonParser.object().from(response);
@@ -223,18 +263,18 @@ public class SoundcloudParsingHelper {
     }
 
     @Nonnull
-    static String getUploaderUrl(JsonObject object) {
-        String url = object.getObject("user").getString("permalink_url", "");
+    public static String getUploaderUrl(JsonObject object) {
+        String url = object.getObject("user").getString("permalink_url", EMPTY_STRING);
         return replaceHttpWithHttps(url);
     }
 
     @Nonnull
-    static String getAvatarUrl(JsonObject object) {
-        String url = object.getObject("user", new JsonObject()).getString("avatar_url", "");
+    public static String getAvatarUrl(JsonObject object) {
+        String url = object.getObject("user").getString("avatar_url", EMPTY_STRING);
         return replaceHttpWithHttps(url);
     }
 
     public static String getUploaderName(JsonObject object) {
-        return object.getObject("user").getString("username", "");
+        return object.getObject("user").getString("username", EMPTY_STRING);
     }
 }

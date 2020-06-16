@@ -9,9 +9,10 @@ import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.utils.ExtractorHelper;
-import org.schabi.newpipe.extractor.utils.Localization;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class PlaylistInfo extends ListInfo<StreamInfoItem> {
 
@@ -46,6 +47,9 @@ public class PlaylistInfo extends ListInfo<StreamInfoItem> {
                 extractor.getServiceId(),
                 extractor.getLinkHandler(),
                 extractor.getName());
+        // collect uploader extraction failures until we are sure this is not
+        // just a playlist without an uploader
+        List<Throwable> uploaderParsingErrors = new ArrayList<Throwable>(3);
 
         try {
             info.setOriginalUrl(extractor.getOriginalUrl());
@@ -65,22 +69,45 @@ public class PlaylistInfo extends ListInfo<StreamInfoItem> {
         try {
             info.setUploaderUrl(extractor.getUploaderUrl());
         } catch (Exception e) {
-            info.addError(e);
+            info.setUploaderUrl("");
+            uploaderParsingErrors.add(e);
         }
         try {
             info.setUploaderName(extractor.getUploaderName());
         } catch (Exception e) {
-            info.addError(e);
+            info.setUploaderName("");
+            uploaderParsingErrors.add(e);
         }
         try {
             info.setUploaderAvatarUrl(extractor.getUploaderAvatarUrl());
         } catch (Exception e) {
-            info.addError(e);
+            info.setUploaderAvatarUrl("");
+            uploaderParsingErrors.add(e);
+        }
+        try {
+            info.setSubChannelUrl(extractor.getSubChannelUrl());
+        } catch (Exception e) {
+            uploaderParsingErrors.add(e);
+        }
+        try {
+            info.setSubChannelName(extractor.getSubChannelName());
+        } catch (Exception e) {
+            uploaderParsingErrors.add(e);
+        }
+        try {
+            info.setSubChannelAvatarUrl(extractor.getSubChannelAvatarUrl());
+        } catch (Exception e) {
+            uploaderParsingErrors.add(e);
         }
         try {
             info.setBannerUrl(extractor.getBannerUrl());
         } catch (Exception e) {
             info.addError(e);
+        }
+        // do not fail if everything but the uploader infos could be collected
+        if (uploaderParsingErrors.size() > 0 &&
+                (!info.getErrors().isEmpty() || uploaderParsingErrors.size() < 3)) {
+            info.addAllErrors(uploaderParsingErrors);
         }
 
         final InfoItemsPage<StreamInfoItem> itemsPage = ExtractorHelper.getItemsPageOrLogError(info, extractor);
@@ -95,6 +122,9 @@ public class PlaylistInfo extends ListInfo<StreamInfoItem> {
     private String uploaderUrl;
     private String uploaderName;
     private String uploaderAvatarUrl;
+    private String subChannelUrl;
+    private String subChannelName;
+    private String subChannelAvatarUrl;
     private long streamCount = 0;
 
     public String getThumbnailUrl() {
@@ -135,6 +165,30 @@ public class PlaylistInfo extends ListInfo<StreamInfoItem> {
 
     public void setUploaderAvatarUrl(String uploaderAvatarUrl) {
         this.uploaderAvatarUrl = uploaderAvatarUrl;
+    }
+
+    public String getSubChannelUrl() {
+        return subChannelUrl;
+    }
+
+    public void setSubChannelUrl(String subChannelUrl) {
+        this.subChannelUrl = subChannelUrl;
+    }
+
+    public String getSubChannelName() {
+        return subChannelName;
+    }
+
+    public void setSubChannelName(String subChannelName) {
+        this.subChannelName = subChannelName;
+    }
+
+    public String getSubChannelAvatarUrl() {
+        return subChannelAvatarUrl;
+    }
+
+    public void setSubChannelAvatarUrl(String subChannelAvatarUrl) {
+        this.subChannelAvatarUrl = subChannelAvatarUrl;
     }
 
     public long getStreamCount() {

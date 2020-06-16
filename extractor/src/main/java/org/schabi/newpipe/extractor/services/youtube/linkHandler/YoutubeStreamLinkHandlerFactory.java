@@ -1,14 +1,20 @@
 package org.schabi.newpipe.extractor.services.youtube.linkHandler;
 
+import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.BASE_YOUTUBE_INTENT_URL;
+
 import org.schabi.newpipe.extractor.exceptions.FoundAdException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
+import org.schabi.newpipe.extractor.linkhandler.LinkHandler;
 import org.schabi.newpipe.extractor.linkhandler.LinkHandlerFactory;
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper;
 import org.schabi.newpipe.extractor.utils.Utils;
 
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+
+import javax.annotation.Nullable;
 
 /*
  * Created by Christian Schabesberger on 02.02.16.
@@ -41,12 +47,25 @@ public class YoutubeStreamLinkHandlerFactory extends LinkHandlerFactory {
         return instance;
     }
 
-    private static String assertIsID(String id) throws ParsingException {
-        if (id == null || !id.matches("[a-zA-Z0-9_-]{11}")) {
+    private static boolean isId(@Nullable String id) {
+        return id != null && id.matches("[a-zA-Z0-9_-]{11}");
+    }
+
+    private static String assertIsId(@Nullable String id) throws ParsingException {
+        if (isId(id)) {
+            return id;
+        } else {
             throw new ParsingException("The given string is not a Youtube-Video-ID");
         }
+    }
 
-        return id;
+    @Override
+    public LinkHandler fromUrl(String url) throws ParsingException {
+        if (url.startsWith(BASE_YOUTUBE_INTENT_URL)){
+            return super.fromUrl(url, BASE_YOUTUBE_INTENT_URL);
+        } else {
+            return super.fromUrl(url);
+        }
     }
 
     @Override
@@ -63,9 +82,14 @@ public class YoutubeStreamLinkHandlerFactory extends LinkHandlerFactory {
             if (scheme != null && (scheme.equals("vnd.youtube") || scheme.equals("vnd.youtube.launch"))) {
                 String schemeSpecificPart = uri.getSchemeSpecificPart();
                 if (schemeSpecificPart.startsWith("//")) {
+                    final String possiblyId = schemeSpecificPart.substring(2);
+                    if (isId(possiblyId)) {
+                        return possiblyId;
+                    }
+
                     urlString = "https:" + schemeSpecificPart;
                 } else {
-                    return assertIsID(schemeSpecificPart);
+                    return assertIsId(schemeSpecificPart);
                 }
             }
         } catch (URISyntaxException ignored) {
@@ -106,7 +130,7 @@ public class YoutubeStreamLinkHandlerFactory extends LinkHandlerFactory {
                 if (path.startsWith("embed/")) {
                     String id = path.split("/")[1];
 
-                    return assertIsID(id);
+                    return assertIsId(id);
                 }
 
                 break;
@@ -114,7 +138,8 @@ public class YoutubeStreamLinkHandlerFactory extends LinkHandlerFactory {
 
             case "YOUTUBE.COM":
             case "WWW.YOUTUBE.COM":
-            case "M.YOUTUBE.COM": {
+            case "M.YOUTUBE.COM":
+            case "MUSIC.YOUTUBE.COM": {
                 if (path.equals("attribution_link")) {
                     String uQueryValue = Utils.getQueryValue(url, "u");
 
@@ -126,57 +151,75 @@ public class YoutubeStreamLinkHandlerFactory extends LinkHandlerFactory {
                     }
 
                     String viewQueryValue = Utils.getQueryValue(decodedURL, "v");
-                    return assertIsID(viewQueryValue);
+                    return assertIsId(viewQueryValue);
                 }
 
                 if (path.startsWith("embed/")) {
                     String id = path.split("/")[1];
 
-                    return assertIsID(id);
+                    return assertIsId(id);
                 }
 
                 String viewQueryValue = Utils.getQueryValue(url, "v");
-                return assertIsID(viewQueryValue);
+                return assertIsId(viewQueryValue);
             }
 
             case "YOUTU.BE": {
                 String viewQueryValue = Utils.getQueryValue(url, "v");
                 if (viewQueryValue != null) {
-                    return assertIsID(viewQueryValue);
+                    return assertIsId(viewQueryValue);
                 }
 
-                return assertIsID(path);
+                return assertIsId(path);
             }
 
             case "HOOKTUBE.COM": {
                 if (path.startsWith("v/")) {
                     String id = path.substring("v/".length());
 
-                    return assertIsID(id);
+                    return assertIsId(id);
                 }
                 if (path.startsWith("watch/")) {
                     String id = path.substring("watch/".length());
 
-                    return assertIsID(id);
+                    return assertIsId(id);
                 }
                 // there is no break-statement here on purpose so the next code-block gets also run for hooktube
             }
 
             case "WWW.INVIDIO.US":
-            case "INVIDIO.US": { // code-block for hooktube.com and invidio.us
+            case "DEV.INVIDIO.US":
+            case "INVIDIO.US":
+            case "INVIDIOUS.SNOPYTA.ORG":
+            case "DE.INVIDIOUS.SNOPYTA.ORG":
+            case "FI.INVIDIOUS.SNOPYTA.ORG":
+            case "VID.WXZM.SX":
+            case "INVIDIOUS.KABI.TK":
+            case "INVIDIOU.SH":
+            case "WWW.INVIDIOU.SH":
+            case "NO.INVIDIOU.SH":
+            case "INVIDIOUS.ENKIRTON.NET":
+            case "TUBE.POAL.CO":
+            case "INVIDIOUS.13AD.DE":
+            case "YT.ELUKERIO.ORG": { // code-block for hooktube.com and Invidious instances
                 if (path.equals("watch")) {
                     String viewQueryValue = Utils.getQueryValue(url, "v");
                     if (viewQueryValue != null) {
-                        return assertIsID(viewQueryValue);
+                        return assertIsId(viewQueryValue);
                     }
                 }
                 if (path.startsWith("embed/")) {
                     String id = path.substring("embed/".length());
 
-                    return assertIsID(id);
+                    return assertIsId(id);
                 }
 
-                break;
+                String viewQueryValue = Utils.getQueryValue(url, "v");
+                if (viewQueryValue != null) {
+                    return assertIsId(viewQueryValue);
+                }
+
+                return assertIsId(path);
             }
         }
 

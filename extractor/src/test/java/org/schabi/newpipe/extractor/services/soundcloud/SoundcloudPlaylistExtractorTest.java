@@ -1,17 +1,16 @@
 package org.schabi.newpipe.extractor.services.soundcloud;
 
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
-import org.schabi.newpipe.Downloader;
+import org.schabi.newpipe.DownloaderTestImpl;
 import org.schabi.newpipe.extractor.ListExtractor;
 import org.schabi.newpipe.extractor.NewPipe;
-import org.schabi.newpipe.extractor.ServiceList;
 import org.schabi.newpipe.extractor.playlist.PlaylistExtractor;
 import org.schabi.newpipe.extractor.services.BasePlaylistExtractorTest;
+import org.schabi.newpipe.extractor.services.soundcloud.extractors.SoundcloudPlaylistExtractor;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
-import org.schabi.newpipe.extractor.utils.Localization;
 
+import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.schabi.newpipe.extractor.ExtractorAsserts.assertIsSecureUrl;
 import static org.schabi.newpipe.extractor.ServiceList.SoundCloud;
@@ -26,7 +25,7 @@ public class SoundcloudPlaylistExtractorTest {
 
         @BeforeClass
         public static void setUp() throws Exception {
-            NewPipe.init(Downloader.getInstance(), new Localization("GB", "en"));
+            NewPipe.init(DownloaderTestImpl.getInstance());
             extractor = (SoundcloudPlaylistExtractor) SoundCloud
                     .getPlaylistExtractor("https://soundcloud.com/liluzivert/sets/the-perfect-luv-tape-r?test=123");
             extractor.fetchPage();
@@ -67,18 +66,12 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testRelatedItems() throws Exception {
-            defaultTestRelatedItems(extractor, SoundCloud.getServiceId());
+            defaultTestRelatedItems(extractor);
         }
 
         @Test
-        public void testMoreRelatedItems() {
-            try {
-                defaultTestMoreItems(extractor, SoundCloud.getServiceId());
-            } catch (Throwable ignored) {
-                return;
-            }
-
-            fail("This playlist doesn't have more items, it should throw an error");
+        public void testMoreRelatedItems() throws Exception {
+            defaultTestMoreItems(extractor);
         }
 
         /*//////////////////////////////////////////////////////////////////////////
@@ -90,17 +83,17 @@ public class SoundcloudPlaylistExtractorTest {
             assertIsSecureUrl(extractor.getThumbnailUrl());
         }
 
-        @Ignore
         @Test
         public void testBannerUrl() {
-            assertIsSecureUrl(extractor.getBannerUrl());
+            // SoundCloud playlists do not have a banner
+            assertNull(extractor.getBannerUrl());
         }
 
         @Test
         public void testUploaderUrl() {
             final String uploaderUrl = extractor.getUploaderUrl();
             assertIsSecureUrl(uploaderUrl);
-            assertTrue(uploaderUrl, uploaderUrl.contains("liluzivert"));
+            assertThat(uploaderUrl, containsString("liluzivert"));
         }
 
         @Test
@@ -115,18 +108,18 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testStreamCount() {
-            assertTrue("Error in the streams count", extractor.getStreamCount() >= 10);
+            assertTrue("Stream count does not fit: " + extractor.getStreamCount(), extractor.getStreamCount() >= 10);
         }
     }
 
-    public static class RandomHouseDanceMusic implements BasePlaylistExtractorTest {
+    public static class RandomHouseMusic implements BasePlaylistExtractorTest {
         private static SoundcloudPlaylistExtractor extractor;
 
         @BeforeClass
         public static void setUp() throws Exception {
-            NewPipe.init(Downloader.getInstance(), new Localization("GB", "en"));
+            NewPipe.init(DownloaderTestImpl.getInstance());
             extractor = (SoundcloudPlaylistExtractor) SoundCloud
-                    .getPlaylistExtractor("https://soundcloud.com/hunter-leader/sets/house-electro-dance-music-2");
+                    .getPlaylistExtractor("https://soundcloud.com/micky96/sets/house");
             extractor.fetchPage();
         }
 
@@ -141,22 +134,22 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testName() {
-            assertEquals("House, Electro , Dance Music 2", extractor.getName());
+            assertEquals("House", extractor.getName());
         }
 
         @Test
         public void testId() {
-            assertEquals("310980722", extractor.getId());
+            assertEquals("123062856", extractor.getId());
         }
 
         @Test
         public void testUrl() throws Exception {
-            assertEquals("https://soundcloud.com/hunter-leader/sets/house-electro-dance-music-2", extractor.getUrl());
+            assertEquals("https://soundcloud.com/micky96/sets/house", extractor.getUrl());
         }
 
         @Test
         public void testOriginalUrl() throws Exception {
-            assertEquals("https://soundcloud.com/hunter-leader/sets/house-electro-dance-music-2", extractor.getOriginalUrl());
+            assertEquals("https://soundcloud.com/micky96/sets/house", extractor.getOriginalUrl());
         }
 
         /*//////////////////////////////////////////////////////////////////////////
@@ -165,12 +158,12 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testRelatedItems() throws Exception {
-            defaultTestRelatedItems(extractor, SoundCloud.getServiceId());
+            defaultTestRelatedItems(extractor);
         }
 
         @Test
         public void testMoreRelatedItems() throws Exception {
-            defaultTestMoreItems(extractor, SoundCloud.getServiceId());
+            defaultTestMoreItems(extractor);
         }
 
         /*//////////////////////////////////////////////////////////////////////////
@@ -182,22 +175,22 @@ public class SoundcloudPlaylistExtractorTest {
             assertIsSecureUrl(extractor.getThumbnailUrl());
         }
 
-        @Ignore
         @Test
         public void testBannerUrl() {
-            assertIsSecureUrl(extractor.getBannerUrl());
+            // SoundCloud playlists do not have a banner
+            assertNull(extractor.getBannerUrl());
         }
 
         @Test
         public void testUploaderUrl() {
             final String uploaderUrl = extractor.getUploaderUrl();
             assertIsSecureUrl(uploaderUrl);
-            assertTrue(uploaderUrl, uploaderUrl.contains("hunter-leader"));
+            assertThat(uploaderUrl, containsString("micky96"));
         }
 
         @Test
         public void testUploaderName() {
-            assertEquals("Gosu", extractor.getUploaderName());
+            assertEquals("_mickyyy", extractor.getUploaderName());
         }
 
         @Test
@@ -207,7 +200,7 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testStreamCount() {
-            assertTrue("Error in the streams count", extractor.getStreamCount() >= 10);
+            assertTrue("Stream count does not fit: " + extractor.getStreamCount(), extractor.getStreamCount() >= 10);
         }
     }
 
@@ -216,7 +209,7 @@ public class SoundcloudPlaylistExtractorTest {
 
         @BeforeClass
         public static void setUp() throws Exception {
-            NewPipe.init(Downloader.getInstance(), new Localization("GB", "en"));
+            NewPipe.init(DownloaderTestImpl.getInstance());
             extractor = (SoundcloudPlaylistExtractor) SoundCloud
                     .getPlaylistExtractor("https://soundcloud.com/user350509423/sets/edm-xxx");
             extractor.fetchPage();
@@ -228,8 +221,8 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testGetPageInNewExtractor() throws Exception {
-            final PlaylistExtractor newExtractor = SoundCloud.getPlaylistExtractor(extractor.getUrl());
-            defaultTestGetPageInNewExtractor(extractor, newExtractor, SoundCloud.getServiceId());
+            PlaylistExtractor newExtractor = SoundCloud.getPlaylistExtractor(extractor.getUrl());
+            defaultTestGetPageInNewExtractor(extractor, newExtractor);
         }
 
         /*//////////////////////////////////////////////////////////////////////////
@@ -267,16 +260,16 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testRelatedItems() throws Exception {
-            defaultTestRelatedItems(extractor, SoundCloud.getServiceId());
+            defaultTestRelatedItems(extractor);
         }
 
         @Test
         public void testMoreRelatedItems() throws Exception {
-            ListExtractor.InfoItemsPage<StreamInfoItem> currentPage = defaultTestMoreItems(extractor, ServiceList.SoundCloud.getServiceId());
+            ListExtractor.InfoItemsPage<StreamInfoItem> currentPage = defaultTestMoreItems(extractor);
             // Test for 2 more levels
             for (int i = 0; i < 2; i++) {
                 currentPage = extractor.getPage(currentPage.getNextPageUrl());
-                defaultTestListOfItems(SoundCloud.getServiceId(), currentPage.getItems(), currentPage.getErrors());
+                defaultTestListOfItems(SoundCloud, currentPage.getItems(), currentPage.getErrors());
             }
         }
 
@@ -289,10 +282,10 @@ public class SoundcloudPlaylistExtractorTest {
             assertIsSecureUrl(extractor.getThumbnailUrl());
         }
 
-        @Ignore
         @Test
         public void testBannerUrl() {
-            assertIsSecureUrl(extractor.getBannerUrl());
+            // SoundCloud playlists do not have a banner
+            assertNull(extractor.getBannerUrl());
         }
 
         @Test
@@ -314,7 +307,105 @@ public class SoundcloudPlaylistExtractorTest {
 
         @Test
         public void testStreamCount() {
-            assertTrue("Error in the streams count", extractor.getStreamCount() >= 3900);
+            assertTrue("Stream count does not fit: " + extractor.getStreamCount(), extractor.getStreamCount() >= 370);
+        }
+    }
+
+    public static class SmallPlaylist implements BasePlaylistExtractorTest {
+        private static SoundcloudPlaylistExtractor extractor;
+
+        @BeforeClass
+        public static void setUp() throws Exception {
+            NewPipe.init(DownloaderTestImpl.getInstance());
+            extractor = (SoundcloudPlaylistExtractor) SoundCloud
+                    .getPlaylistExtractor("https://soundcloud.com/breezy-123/sets/empty-playlist?test=123");
+            extractor.fetchPage();
+        }
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Extractor
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Test
+        public void testServiceId() {
+            assertEquals(SoundCloud.getServiceId(), extractor.getServiceId());
+        }
+
+        @Test
+        public void testName() {
+            assertEquals("EMPTY PLAYLIST", extractor.getName());
+        }
+
+        @Test
+        public void testId() {
+            assertEquals("23483459", extractor.getId());
+        }
+
+        @Test
+        public void testUrl() throws Exception {
+            assertEquals("https://soundcloud.com/breezy-123/sets/empty-playlist", extractor.getUrl());
+        }
+
+        @Test
+        public void testOriginalUrl() throws Exception {
+            assertEquals("https://soundcloud.com/breezy-123/sets/empty-playlist?test=123", extractor.getOriginalUrl());
+        }
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // ListExtractor
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Test
+        public void testRelatedItems() throws Exception {
+            defaultTestRelatedItems(extractor);
+        }
+
+        @Test
+        public void testMoreRelatedItems() throws Exception {
+            try {
+                defaultTestMoreItems(extractor);
+            } catch (Throwable ignored) {
+                return;
+            }
+
+            fail("This playlist doesn't have more items, it should throw an error");
+        }
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // PlaylistExtractor
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Test
+        public void testThumbnailUrl() {
+            assertIsSecureUrl(extractor.getThumbnailUrl());
+        }
+
+        @Test
+        public void testBannerUrl() {
+            // SoundCloud playlists do not have a banner
+            assertNull(extractor.getBannerUrl());
+        }
+
+        @Test
+        public void testUploaderUrl() {
+            final String uploaderUrl = extractor.getUploaderUrl();
+            assertIsSecureUrl(uploaderUrl);
+            assertThat(uploaderUrl, containsString("breezy-123"));
+        }
+
+        @Test
+        public void testUploaderName() {
+            assertEquals("breezy-123", extractor.getUploaderName());
+        }
+
+        @Test
+        public void testUploaderAvatarUrl() {
+            assertIsSecureUrl(extractor.getUploaderAvatarUrl());
+        }
+
+        @Test
+        public void testStreamCount() {
+            assertEquals(2, extractor.getStreamCount());
         }
     }
 }

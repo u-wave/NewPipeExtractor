@@ -5,12 +5,15 @@ import org.schabi.newpipe.extractor.InfoItemExtractor;
 import org.schabi.newpipe.extractor.InfoItemsCollector;
 import org.schabi.newpipe.extractor.channel.ChannelInfoItemExtractor;
 import org.schabi.newpipe.extractor.channel.ChannelInfoItemsCollector;
-import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItemExtractor;
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItemsCollector;
 import org.schabi.newpipe.extractor.stream.StreamInfoItemExtractor;
 import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /*
  * Created by Christian Schabesberger on 12.02.17.
@@ -34,7 +37,7 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector;
 
 /**
  * Collector for search results
- *
+ * <p>
  * This collector can handle the following extractor types:
  * <ul>
  *     <li>{@link StreamInfoItemExtractor}</li>
@@ -49,7 +52,7 @@ public class InfoItemsSearchCollector extends InfoItemsCollector<InfoItem, InfoI
     private final ChannelInfoItemsCollector userCollector;
     private final PlaylistInfoItemsCollector playlistCollector;
 
-    InfoItemsSearchCollector(int serviceId) {
+    public InfoItemsSearchCollector(int serviceId) {
         super(serviceId);
         streamCollector = new StreamInfoItemsCollector(serviceId);
         userCollector = new ChannelInfoItemsCollector(serviceId);
@@ -57,13 +60,31 @@ public class InfoItemsSearchCollector extends InfoItemsCollector<InfoItem, InfoI
     }
 
     @Override
+    public List<Throwable> getErrors() {
+        final List<Throwable> errors = new ArrayList<>(super.getErrors());
+        errors.addAll(streamCollector.getErrors());
+        errors.addAll(userCollector.getErrors());
+        errors.addAll(playlistCollector.getErrors());
+
+        return Collections.unmodifiableList(errors);
+    }
+
+    @Override
+    public void reset() {
+        super.reset();
+        streamCollector.reset();
+        userCollector.reset();
+        playlistCollector.reset();
+    }
+
+    @Override
     public InfoItem extract(InfoItemExtractor extractor) throws ParsingException {
         // Use the corresponding collector for each item extractor type
-        if(extractor instanceof StreamInfoItemExtractor) {
+        if (extractor instanceof StreamInfoItemExtractor) {
             return streamCollector.extract((StreamInfoItemExtractor) extractor);
-        } else if(extractor instanceof ChannelInfoItemExtractor) {
+        } else if (extractor instanceof ChannelInfoItemExtractor) {
             return userCollector.extract((ChannelInfoItemExtractor) extractor);
-        } else if(extractor instanceof PlaylistInfoItemExtractor) {
+        } else if (extractor instanceof PlaylistInfoItemExtractor) {
             return playlistCollector.extract((PlaylistInfoItemExtractor) extractor);
         } else {
             throw new IllegalArgumentException("Invalid extractor type: " + extractor);

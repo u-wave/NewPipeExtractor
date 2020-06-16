@@ -5,11 +5,9 @@ import org.schabi.newpipe.extractor.ListInfo;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
-import org.schabi.newpipe.extractor.exceptions.ParsingException;
-import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.utils.ExtractorHelper;
-import org.schabi.newpipe.extractor.utils.Localization;
 
 import java.io.IOException;
 
@@ -35,8 +33,8 @@ import java.io.IOException;
 
 public class ChannelInfo extends ListInfo<StreamInfoItem> {
 
-    public ChannelInfo(int serviceId, ListLinkHandler linkHandler, String name) throws ParsingException {
-        super(serviceId, linkHandler, name);
+    public ChannelInfo(int serviceId, String id, String url, String originalUrl, String name, ListLinkHandler listLinkHandler) {
+        super(serviceId, id, url, originalUrl, name, listLinkHandler.getContentFilters(), listLinkHandler.getSortFilter());
     }
 
     public static ChannelInfo getInfo(String url) throws IOException, ExtractionException {
@@ -57,15 +55,14 @@ public class ChannelInfo extends ListInfo<StreamInfoItem> {
 
     public static ChannelInfo getInfo(ChannelExtractor extractor) throws IOException, ExtractionException {
 
-        ChannelInfo info = new ChannelInfo(extractor.getServiceId(),
-                extractor.getLinkHandler(),
-                extractor.getName());
+        final int serviceId = extractor.getServiceId();
+        final String id = extractor.getId();
+        final String url = extractor.getUrl();
+        final String originalUrl = extractor.getOriginalUrl();
+        final String name = extractor.getName();
 
-        try {
-            info.setOriginalUrl(extractor.getOriginalUrl());
-        } catch (Exception e) {
-            info.addError(e);
-        }
+        final ChannelInfo info = new ChannelInfo(serviceId, id, url, originalUrl, name, extractor.getLinkHandler());
+
         try {
             info.setAvatarUrl(extractor.getAvatarUrl());
         } catch (Exception e) {
@@ -97,15 +94,60 @@ public class ChannelInfo extends ListInfo<StreamInfoItem> {
             info.addError(e);
         }
 
+        try {
+            info.setParentChannelName(extractor.getParentChannelName());
+        } catch (Exception e) {
+            info.addError(e);
+        }
+
+        try {
+            info.setParentChannelUrl(extractor.getParentChannelUrl());
+        } catch (Exception e) {
+            info.addError(e);
+        }
+
+        try {
+            info.setParentChannelAvatarUrl(extractor.getParentChannelAvatarUrl());
+        } catch (Exception e) {
+            info.addError(e);
+        }
+
         return info;
     }
 
     private String avatarUrl;
+    private String parentChannelName;
+    private String parentChannelUrl;
+    private String parentChannelAvatarUrl;
     private String bannerUrl;
     private String feedUrl;
     private long subscriberCount = -1;
     private String description;
     private String[] donationLinks;
+
+    public String getParentChannelName() {
+        return parentChannelName;
+    }
+
+    public void setParentChannelName(String parentChannelName) {
+        this.parentChannelName = parentChannelName;
+    }
+
+    public String getParentChannelUrl() {
+        return parentChannelUrl;
+    }
+
+    public void setParentChannelUrl(String parentChannelUrl) {
+        this.parentChannelUrl = parentChannelUrl;
+    }
+
+    public String getParentChannelAvatarUrl() {
+        return parentChannelAvatarUrl;
+    }
+
+    public void setParentChannelAvatarUrl(String parentChannelAvatarUrl) {
+        this.parentChannelAvatarUrl = parentChannelAvatarUrl;
+    }
 
     public String getAvatarUrl() {
         return avatarUrl;

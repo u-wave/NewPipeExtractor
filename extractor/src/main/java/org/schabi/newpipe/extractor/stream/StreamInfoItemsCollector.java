@@ -61,8 +61,13 @@ public class StreamInfoItemsCollector extends InfoItemsCollector<StreamInfoItem,
             addError(e);
         }
         try {
-            resultItem.setUploadDate(extractor.getUploadDate());
+            resultItem.setTextualUploadDate(extractor.getTextualUploadDate());
         } catch (Exception e) {
+            addError(e);
+        }
+        try {
+            resultItem.setUploadDate(extractor.getUploadDate());
+        } catch (ParsingException e) {
             addError(e);
         }
         try {
@@ -96,8 +101,8 @@ public class StreamInfoItemsCollector extends InfoItemsCollector<StreamInfoItem,
 
     public List<StreamInfoItem> getStreamInfoItemList() {
         List<StreamInfoItem> siiList = new Vector<>();
-        for(InfoItem ii : super.getItems()) {
-            if(ii instanceof StreamInfoItem) {
+        for (InfoItem ii : super.getItems()) {
+            if (ii instanceof StreamInfoItem) {
                 siiList.add((StreamInfoItem) ii);
             }
         }

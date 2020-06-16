@@ -1,9 +1,14 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors;
 
-import org.jsoup.nodes.Element;
+import com.grack.nanojson.JsonObject;
+
 import org.schabi.newpipe.extractor.channel.ChannelInfoItemExtractor;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeChannelLinkHandlerFactory;
 import org.schabi.newpipe.extractor.utils.Utils;
+
+import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.fixThumbnailUrl;
+import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getTextFromObject;
 
 /*
  * Created by Christian Schabesberger on 12.02.17.
@@ -26,69 +31,82 @@ import org.schabi.newpipe.extractor.utils.Utils;
  */
 
 public class YoutubeChannelInfoItemExtractor implements ChannelInfoItemExtractor {
-    private final Element el;
+    private JsonObject channelInfoItem;
 
-    public YoutubeChannelInfoItemExtractor(Element el) {
-        this.el = el;
+    public YoutubeChannelInfoItemExtractor(JsonObject channelInfoItem) {
+        this.channelInfoItem = channelInfoItem;
     }
 
     @Override
     public String getThumbnailUrl() throws ParsingException {
-        Element img = el.select("span[class*=\"yt-thumb-simple\"]").first()
-                .select("img").first();
+        try {
+            String url = channelInfoItem.getObject("thumbnail").getArray("thumbnails").getObject(0).getString("url");
 
-        String url = img.attr("abs:src");
-
-        if (url.contains("gif")) {
-            url = img.attr("abs:data-thumb");
+            return fixThumbnailUrl(url);
+        } catch (Exception e) {
+            throw new ParsingException("Could not get thumbnail url", e);
         }
-        return url;
     }
 
     @Override
     public String getName() throws ParsingException {
-        return el.select("a[class*=\"yt-uix-tile-link\"]").first()
-                .text();
+        try {
+            return getTextFromObject(channelInfoItem.getObject("title"));
+        } catch (Exception e) {
+            throw new ParsingException("Could not get name", e);
+        }
     }
 
     @Override
     public String getUrl() throws ParsingException {
-        return el.select("a[class*=\"yt-uix-tile-link\"]").first()
-                .attr("abs:href");
+        try {
+            String id = "channel/" + channelInfoItem.getString("channelId");
+            return YoutubeChannelLinkHandlerFactory.getInstance().getUrl(id);
+        } catch (Exception e) {
+            throw new ParsingException("Could not get url", e);
+        }
     }
 
     @Override
     public long getSubscriberCount() throws ParsingException {
-        final Element subsEl = el.select("span[class*=\"yt-subscriber-count\"]").first();
-        if (subsEl != null) {
-            try {
-                return Long.parseLong(Utils.removeNonDigitCharacters(subsEl.text()));
-            } catch (NumberFormatException e) {
-                throw new ParsingException("Could not get subscriber count", e);
+        try {
+            if (!channelInfoItem.has("subscriberCountText")) {
+                // Subscription count is not available for this channel item.
+                return -1;
             }
-        } else {
-            // If the element is null, the channel have the subscriber count disabled
-            return -1;
+
+            return Utils.mixedNumberWordToLong(getTextFromObject(channelInfoItem.getObject("subscriberCountText")));
+        } catch (Exception e) {
+            throw new ParsingException("Could not get subscriber count", e);
         }
     }
 
     @Override
     public long getStreamCount() throws ParsingException {
-        Element metaEl = el.select("ul[class*=\"yt-lockup-meta-info\"]").first();
-        if (metaEl == null) {
-            return 0;
-        } else {
-            return Long.parseLong(Utils.removeNonDigitCharacters(metaEl.text()));
+        try {
+            if (!channelInfoItem.has("videoCountText")) {
+                // Video count is not available, channel probably has no public uploads.
+                return -1;
+            }
+
+            return Long.parseLong(Utils.removeNonDigitCharacters(getTextFromObject(
+                    channelInfoItem.getObject("videoCountText"))));
+        } catch (Exception e) {
+            throw new ParsingException("Could not get stream count", e);
         }
     }
 
     @Override
     public String getDescription() throws ParsingException {
-        Element desEl = el.select("div[class*=\"yt-lockup-description\"]").first();
-        if (desEl == null) {
-            return "";
-        } else {
-            return desEl.text();
+        try {
+            if (!channelInfoItem.has("descriptionSnippet")) {
+                // Channel have no description.
+                return null;
+            }
+
+            return getTextFromObject(channelInfoItem.getObject("descriptionSnippet"));
+        } catch (Exception e) {
+            throw new ParsingException("Could not get description", e);
         }
     }
 }

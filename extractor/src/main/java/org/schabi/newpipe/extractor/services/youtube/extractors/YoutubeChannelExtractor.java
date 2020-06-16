@@ -1,29 +1,27 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors;
 
-
+import com.grack.nanojson.JsonArray;
 import com.grack.nanojson.JsonObject;
-import com.grack.nanojson.JsonParser;
-import com.grack.nanojson.JsonParserException;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.schabi.newpipe.extractor.Downloader;
-import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.channel.ChannelExtractor;
+import org.schabi.newpipe.extractor.downloader.Downloader;
+import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
+import org.schabi.newpipe.extractor.localization.TimeAgoParser;
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper;
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeChannelLinkHandlerFactory;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector;
-import org.schabi.newpipe.extractor.utils.DonationLinkHelper;
-import org.schabi.newpipe.extractor.utils.Localization;
-import org.schabi.newpipe.extractor.utils.Parser;
 import org.schabi.newpipe.extractor.utils.Utils;
 
 import javax.annotation.Nonnull;
 import java.io.IOException;
-import java.util.ArrayList;
+
+import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.*;
+import static org.schabi.newpipe.extractor.utils.JsonUtils.EMPTY_STRING;
+import static org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty;
 
 /*
  * Created by Christian Schabesberger on 25.07.16.
@@ -47,32 +45,79 @@ import java.util.ArrayList;
 
 @SuppressWarnings("WeakerAccess")
 public class YoutubeChannelExtractor extends ChannelExtractor {
-    private static final String CHANNEL_FEED_BASE = "https://www.youtube.com/feeds/videos.xml?channel_id=";
-    private static final String CHANNEL_URL_PARAMETERS = "/videos?view=0&flow=list&sort=dd&live_view=10000";
+    private JsonObject initialData;
+    private JsonObject videoTab;
 
-    private Document doc;
+    /**
+     * Some channels have response redirects and the only way to reliably get the id is by saving it.
+     * <p>
+     * "Movies & Shows":
+     * <pre>
+     * UCuJcl0Ju-gPDoksRjK1ya-w ┐
+     * UChBfWrfBXL9wS6tQtgjt_OQ ├ UClgRkhTL3_hImCAmdLfDE4g
+     * UCok7UTQQEP1Rsctxiv3gwSQ ┘
+     * </pre>
+     */
+    private String redirectedChannelId;
 
-    public YoutubeChannelExtractor(StreamingService service, ListLinkHandler linkHandler, Localization localization) {
-        super(service, linkHandler, localization);
+    public YoutubeChannelExtractor(StreamingService service, ListLinkHandler linkHandler) {
+        super(service, linkHandler);
     }
 
     @Override
     public void onFetchPage(@Nonnull Downloader downloader) throws IOException, ExtractionException {
-        String channelUrl = super.getUrl() + CHANNEL_URL_PARAMETERS;
-        String pageContent = downloader.download(channelUrl);
-        doc = Jsoup.parse(pageContent, channelUrl);
+        String url = super.getUrl() + "/videos?pbj=1&view=0&flow=grid";
+        JsonArray ajaxJson = null;
+
+        int level = 0;
+        while (level < 3) {
+            final JsonArray jsonResponse = getJsonResponse(url, getExtractorLocalization());
+
+            final JsonObject endpoint = jsonResponse.getObject(1).getObject("response")
+                    .getArray("onResponseReceivedActions").getObject(0).getObject("navigateAction")
+                    .getObject("endpoint");
+
+            final String webPageType = endpoint.getObject("commandMetadata").getObject("webCommandMetadata")
+                    .getString("webPageType", EMPTY_STRING);
+
+            final String browseId = endpoint.getObject("browseEndpoint").getString("browseId", EMPTY_STRING);
+
+            if (webPageType.equalsIgnoreCase("WEB_PAGE_TYPE_BROWSE") && !browseId.isEmpty()) {
+                if (!browseId.startsWith("UC")) {
+                    throw new ExtractionException("Redirected id is not pointing to a channel");
+                }
+
+                url = "https://www.youtube.com/channel/" + browseId + "/videos?pbj=1&view=0&flow=grid";
+                redirectedChannelId = browseId;
+                level++;
+            } else {
+                ajaxJson = jsonResponse;
+                break;
+            }
+        }
+
+        if (ajaxJson == null) {
+            throw new ExtractionException("Could not fetch initial JSON data");
+        }
+
+        initialData = ajaxJson.getObject(1).getObject("response");
+        YoutubeParsingHelper.defaultAlertsCheck(initialData);
     }
+
 
     @Override
     public String getNextPageUrl() throws ExtractionException {
-        return getNextPageUrlFrom(doc);
+        if (getVideoTab() == null) return "";
+        return getNextPageUrlFrom(getVideoTab().getObject("content").getObject("sectionListRenderer")
+                .getArray("contents").getObject(0).getObject("itemSectionRenderer")
+                .getArray("contents").getObject(0).getObject("gridRenderer").getArray("continuations"));
     }
 
     @Nonnull
     @Override
     public String getUrl() throws ParsingException {
         try {
-            return "https://www.youtube.com/channel/" + getId();
+            return YoutubeChannelLinkHandlerFactory.getInstance().getUrl("channel/" + getId());
         } catch (ParsingException e) {
             return super.getUrl();
         }
@@ -81,13 +126,15 @@ public class YoutubeChannelExtractor extends ChannelExtractor {
     @Nonnull
     @Override
     public String getId() throws ParsingException {
-        try {
-            Element element = doc.getElementsByClass("yt-uix-subscription-button").first();
-            if (element == null) element = doc.getElementsByClass("yt-uix-subscription-preferences-button").first();
+        final String channelId = initialData.getObject("header").getObject("c4TabbedHeaderRenderer")
+                .getString("channelId", EMPTY_STRING);
 
-            return element.attr("data-channel-external-id");
-        } catch (Exception e) {
-            throw new ParsingException("Could not get channel id", e);
+        if (!channelId.isEmpty()) {
+            return channelId;
+        } else if (!isNullOrEmpty(redirectedChannelId)) {
+            return redirectedChannelId;
+        } else {
+            throw new ParsingException("Could not get channel id");
         }
     }
 
@@ -95,7 +142,7 @@ public class YoutubeChannelExtractor extends ChannelExtractor {
     @Override
     public String getName() throws ParsingException {
         try {
-            return doc.select("meta[property=\"og:title\"]").first().attr("content");
+            return initialData.getObject("header").getObject("c4TabbedHeaderRenderer").getString("title");
         } catch (Exception e) {
             throw new ParsingException("Could not get channel name", e);
         }
@@ -104,7 +151,10 @@ public class YoutubeChannelExtractor extends ChannelExtractor {
     @Override
     public String getAvatarUrl() throws ParsingException {
         try {
-            return doc.select("img[class=\"channel-header-profile-image\"]").first().attr("abs:src");
+            String url = initialData.getObject("header").getObject("c4TabbedHeaderRenderer").getObject("avatar")
+                    .getArray("thumbnails").getObject(0).getString("url");
+
+            return fixThumbnailUrl(url);
         } catch (Exception e) {
             throw new ParsingException("Could not get avatar", e);
         }
@@ -113,20 +163,23 @@ public class YoutubeChannelExtractor extends ChannelExtractor {
     @Override
     public String getBannerUrl() throws ParsingException {
         try {
-            Element el = doc.select("div[id=\"gh-banner\"]").first().select("style").first();
-            String cssContent = el.html();
-            String url = "https:" + Parser.matchGroup1("url\\(([^)]+)\\)", cssContent);
+            String url = initialData.getObject("header").getObject("c4TabbedHeaderRenderer").getObject("banner")
+                    .getArray("thumbnails").getObject(0).getString("url");
 
-            return url.contains("s.ytimg.com") || url.contains("default_banner") ? null : url;
+            if (url == null || url.contains("s.ytimg.com") || url.contains("default_banner")) {
+                return null;
+            }
+
+            return fixThumbnailUrl(url);
         } catch (Exception e) {
-            throw new ParsingException("Could not get Banner", e);
+            throw new ParsingException("Could not get banner", e);
         }
     }
 
     @Override
     public String getFeedUrl() throws ParsingException {
         try {
-            return CHANNEL_FEED_BASE + getId();
+            return YoutubeParsingHelper.getFeedUrlFrom(getId());
         } catch (Exception e) {
             throw new ParsingException("Could not get feed url", e);
         }
@@ -134,40 +187,65 @@ public class YoutubeChannelExtractor extends ChannelExtractor {
 
     @Override
     public long getSubscriberCount() throws ParsingException {
-        final Element el = doc.select("span[class*=\"yt-subscription-button-subscriber-count\"]").first();
-        if (el != null) {
+        final JsonObject c4TabbedHeaderRenderer = initialData.getObject("header").getObject("c4TabbedHeaderRenderer");
+        if (c4TabbedHeaderRenderer.has("subscriberCountText")) {
             try {
-                return Long.parseLong(Utils.removeNonDigitCharacters(el.text()));
+                return Utils.mixedNumberWordToLong(getTextFromObject(c4TabbedHeaderRenderer.getObject("subscriberCountText")));
             } catch (NumberFormatException e) {
                 throw new ParsingException("Could not get subscriber count", e);
             }
         } else {
-            // If the element is null, the channel have the subscriber count disabled
-            return -1;
+            // If there's no subscribe button, the channel has the subscriber count disabled
+            if (c4TabbedHeaderRenderer.has("subscribeButton")) {
+                return 0;
+            } else {
+                return -1;
+            }
         }
     }
 
     @Override
     public String getDescription() throws ParsingException {
         try {
-            return doc.select("meta[name=\"description\"]").first().attr("content");
+            return initialData.getObject("metadata").getObject("channelMetadataRenderer").getString("description");
         } catch (Exception e) {
             throw new ParsingException("Could not get channel description", e);
         }
+    }
+
+    @Override
+    public String getParentChannelName() throws ParsingException {
+        return "";
+    }
+
+    @Override
+    public String getParentChannelUrl() throws ParsingException {
+        return "";
+    }
+
+    @Override
+    public String getParentChannelAvatarUrl() throws ParsingException {
+        return "";
     }
 
     @Nonnull
     @Override
     public InfoItemsPage<StreamInfoItem> getInitialPage() throws ExtractionException {
         StreamInfoItemsCollector collector = new StreamInfoItemsCollector(getServiceId());
-        Element ul = doc.select("ul[id=\"browse-items-primary\"]").first();
-        collectStreamsFrom(collector, ul);
+
+        if (getVideoTab() != null) {
+            JsonArray videos = getVideoTab().getObject("content").getObject("sectionListRenderer").getArray("contents")
+                    .getObject(0).getObject("itemSectionRenderer").getArray("contents").getObject(0)
+                    .getObject("gridRenderer").getArray("items");
+            collectStreamsFrom(collector, videos);
+        }
+
         return new InfoItemsPage<>(collector, getNextPageUrl());
     }
 
     @Override
     public InfoItemsPage<StreamInfoItem> getPage(String pageUrl) throws IOException, ExtractionException {
-        if (pageUrl == null || pageUrl.isEmpty()) {
+        if (isNullOrEmpty(pageUrl)) {
             throw new ExtractionException(new IllegalArgumentException("Page url is empty or null"));
         }
 
@@ -176,103 +254,84 @@ public class YoutubeChannelExtractor extends ChannelExtractor {
         fetchPage();
 
         StreamInfoItemsCollector collector = new StreamInfoItemsCollector(getServiceId());
-        JsonObject ajaxJson;
-        try {
-            ajaxJson = JsonParser.object().from(NewPipe.getDownloader().download(pageUrl));
-        } catch (JsonParserException pe) {
-            throw new ParsingException("Could not parse json data for next streams", pe);
-        }
+        final JsonArray ajaxJson = getJsonResponse(pageUrl, getExtractorLocalization());
 
-        final Document ajaxHtml = Jsoup.parse(ajaxJson.getString("content_html"), pageUrl);
-        collectStreamsFrom(collector, ajaxHtml.select("body").first());
+        JsonObject sectionListContinuation = ajaxJson.getObject(1).getObject("response")
+                .getObject("continuationContents").getObject("gridContinuation");
 
-        return new InfoItemsPage<>(collector, getNextPageUrlFromAjaxPage(ajaxJson, pageUrl));
+        collectStreamsFrom(collector, sectionListContinuation.getArray("items"));
+
+        return new InfoItemsPage<>(collector, getNextPageUrlFrom(sectionListContinuation.getArray("continuations")));
     }
 
-    private String getNextPageUrlFromAjaxPage(final JsonObject ajaxJson, final String pageUrl)
-        throws ParsingException {
-        String loadMoreHtmlDataRaw = ajaxJson.getString("load_more_widget_html");
-        if (!loadMoreHtmlDataRaw.isEmpty()) {
-            return getNextPageUrlFrom(Jsoup.parse(loadMoreHtmlDataRaw, pageUrl));
-        } else {
+
+    private String getNextPageUrlFrom(JsonArray continuations) {
+        if (isNullOrEmpty(continuations)) {
             return "";
         }
+
+        JsonObject nextContinuationData = continuations.getObject(0).getObject("nextContinuationData");
+        String continuation = nextContinuationData.getString("continuation");
+        String clickTrackingParams = nextContinuationData.getString("clickTrackingParams");
+        return "https://www.youtube.com/browse_ajax?ctoken=" + continuation + "&continuation=" + continuation
+                + "&itct=" + clickTrackingParams;
     }
 
-    private String getNextPageUrlFrom(Document d) throws ParsingException {
-        try {
-            Element button = d.select("button[class*=\"yt-uix-load-more\"]").first();
-            if (button != null) {
-                return button.attr("abs:data-uix-load-more-href");
-            } else {
-                // Sometimes channels are simply so small, they don't have a more streams/videos
-                return "";
-            }
-        } catch (Exception e) {
-            throw new ParsingException("Could not get next page url", e);
-        }
-    }
-
-    private void collectStreamsFrom(StreamInfoItemsCollector collector, Element element) throws ParsingException {
+    private void collectStreamsFrom(StreamInfoItemsCollector collector, JsonArray videos) throws ParsingException {
         collector.reset();
 
         final String uploaderName = getName();
         final String uploaderUrl = getUrl();
-        for (final Element li : element.children()) {
-            if (li.select("div[class=\"feed-item-dismissable\"]").first() != null) {
-                collector.commit(new YoutubeStreamInfoItemExtractor(li) {
-                    @Override
-                    public String getUrl() throws ParsingException {
-                        try {
-                            Element el = li.select("div[class=\"feed-item-dismissable\"]").first();
-                            Element dl = el.select("h3").first().select("a").first();
-                            return dl.attr("abs:href");
-                        } catch (Exception e) {
-                            throw new ParsingException("Could not get web page url for the video", e);
-                        }
-                    }
+        final TimeAgoParser timeAgoParser = getTimeAgoParser();
 
+        for (Object video : videos) {
+            if (((JsonObject) video).has("gridVideoRenderer")) {
+                collector.commit(new YoutubeStreamInfoItemExtractor(
+                        ((JsonObject) video).getObject("gridVideoRenderer"), timeAgoParser) {
                     @Override
-                    public String getName() throws ParsingException {
-                        try {
-                            Element el = li.select("div[class=\"feed-item-dismissable\"]").first();
-                            Element dl = el.select("h3").first().select("a").first();
-                            return dl.text();
-                        } catch (Exception e) {
-                            throw new ParsingException("Could not get title", e);
-                        }
-                    }
-
-                    @Override
-                    public String getUploaderName() throws ParsingException {
+                    public String getUploaderName() {
                         return uploaderName;
                     }
 
                     @Override
-                    public String getUploaderUrl() throws ParsingException {
+                    public String getUploaderUrl() {
                         return uploaderUrl;
-                    }
-
-                    @Override
-                    public String getThumbnailUrl() throws ParsingException {
-                        try {
-                            String url;
-                            Element te = li.select("span[class=\"yt-thumb-clip\"]").first()
-                                    .select("img").first();
-                            url = te.attr("abs:src");
-                            // Sometimes youtube sends links to gif files which somehow seem to not exist
-                            // anymore. Items with such gif also offer a secondary image source. So we are going
-                            // to use that if we've caught such an item.
-                            if (url.contains(".gif")) {
-                                url = te.attr("abs:data-thumb");
-                            }
-                            return url;
-                        } catch (Exception e) {
-                            throw new ParsingException("Could not get thumbnail url", e);
-                        }
                     }
                 });
             }
         }
+    }
+
+    private JsonObject getVideoTab() throws ParsingException {
+        if (this.videoTab != null) return this.videoTab;
+
+        JsonArray tabs = initialData.getObject("contents").getObject("twoColumnBrowseResultsRenderer")
+                .getArray("tabs");
+        JsonObject videoTab = null;
+
+        for (Object tab : tabs) {
+            if (((JsonObject) tab).has("tabRenderer")) {
+                if (((JsonObject) tab).getObject("tabRenderer").getString("title", EMPTY_STRING).equals("Videos")) {
+                    videoTab = ((JsonObject) tab).getObject("tabRenderer");
+                    break;
+                }
+            }
+        }
+
+        if (videoTab == null) {
+            throw new ContentNotSupportedException("This channel has no Videos tab");
+        }
+
+        final String messageRendererText = getTextFromObject(videoTab.getObject("content")
+                .getObject("sectionListRenderer").getArray("contents").getObject(0)
+                .getObject("itemSectionRenderer").getArray("contents").getObject(0)
+                .getObject("messageRenderer").getObject("text"));
+        if (messageRendererText != null
+                && messageRendererText.equals("This channel has no videos.")) {
+            return null;
+        }
+
+        this.videoTab = videoTab;
+        return videoTab;
     }
 }

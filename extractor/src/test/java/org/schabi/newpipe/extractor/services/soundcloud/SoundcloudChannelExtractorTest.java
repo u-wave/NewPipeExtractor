@@ -2,12 +2,12 @@ package org.schabi.newpipe.extractor.services.soundcloud;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.schabi.newpipe.Downloader;
+import org.schabi.newpipe.DownloaderTestImpl;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.channel.ChannelExtractor;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.services.BaseChannelExtractorTest;
-import org.schabi.newpipe.extractor.utils.Localization;
+import org.schabi.newpipe.extractor.services.soundcloud.extractors.SoundcloudChannelExtractor;
 
 import static org.junit.Assert.*;
 import static org.schabi.newpipe.extractor.ExtractorAsserts.assertEmpty;
@@ -24,7 +24,7 @@ public class SoundcloudChannelExtractorTest {
 
         @BeforeClass
         public static void setUp() throws Exception {
-            NewPipe.init(Downloader.getInstance(), new Localization("GB", "en"));
+            NewPipe.init(DownloaderTestImpl.getInstance());
             extractor = (SoundcloudChannelExtractor) SoundCloud
                     .getChannelExtractor("http://soundcloud.com/liluzivert/sets");
             extractor.fetchPage();
@@ -65,12 +65,12 @@ public class SoundcloudChannelExtractorTest {
 
         @Test
         public void testRelatedItems() throws Exception {
-            defaultTestRelatedItems(extractor, SoundCloud.getServiceId());
+            defaultTestRelatedItems(extractor);
         }
 
         @Test
         public void testMoreRelatedItems() throws Exception {
-            defaultTestMoreItems(extractor, SoundCloud.getServiceId());
+            defaultTestMoreItems(extractor);
         }
 
         /*//////////////////////////////////////////////////////////////////////////
@@ -108,7 +108,7 @@ public class SoundcloudChannelExtractorTest {
 
         @BeforeClass
         public static void setUp() throws Exception {
-            NewPipe.init(Downloader.getInstance(), new Localization("GB", "en"));
+            NewPipe.init(DownloaderTestImpl.getInstance());
             extractor = (SoundcloudChannelExtractor) SoundCloud
                     .getChannelExtractor("https://soundcloud.com/dubmatix");
             extractor.fetchPage();
@@ -121,7 +121,7 @@ public class SoundcloudChannelExtractorTest {
         @Test
         public void testGetPageInNewExtractor() throws Exception {
             final ChannelExtractor newExtractor = SoundCloud.getChannelExtractor(extractor.getUrl());
-            defaultTestGetPageInNewExtractor(extractor, newExtractor, SoundCloud.getServiceId());
+            defaultTestGetPageInNewExtractor(extractor, newExtractor);
         }
 
         /*//////////////////////////////////////////////////////////////////////////
@@ -159,12 +159,12 @@ public class SoundcloudChannelExtractorTest {
 
         @Test
         public void testRelatedItems() throws Exception {
-            defaultTestRelatedItems(extractor, SoundCloud.getServiceId());
+            defaultTestRelatedItems(extractor);
         }
 
         @Test
         public void testMoreRelatedItems() throws Exception {
-            defaultTestMoreItems(extractor, SoundCloud.getServiceId());
+            defaultTestMoreItems(extractor);
         }
 
         /*//////////////////////////////////////////////////////////////////////////

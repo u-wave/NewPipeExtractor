@@ -1,13 +1,22 @@
 allprojects {
     apply plugin: 'java-library'
+    apply plugin: 'maven'
+
     sourceCompatibility = 1.7
     targetCompatibility = 1.7
 
-    version 'v0.13.0'
+    version 'v0.19.5'
+    group 'com.github.TeamNewPipe'
 
     repositories {
         jcenter()
+        maven { url "https://jitpack.io" }
     }
+}
+
+dependencies {
+    implementation project(':extractor')
+    implementation project(':timeago-parser')
 }
 
 subprojects {
@@ -35,7 +44,8 @@ task aggregatedJavadocs(type: Javadoc, group: 'Documentation') {
     title = "$project.name $version"
     // options.memberLevel = JavadocMemberLevel.PRIVATE
     options.links 'https://docs.oracle.com/javase/7/docs/api/'
-    
+    options.encoding 'UTF-8'
+
     subprojects.each { project ->
         project.tasks.withType(Javadoc).each { javadocTask ->
             source += javadocTask.source

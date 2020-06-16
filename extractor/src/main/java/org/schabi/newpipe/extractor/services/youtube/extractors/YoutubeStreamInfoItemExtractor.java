@@ -1,11 +1,24 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors;
 
-import org.jsoup.nodes.Element;
+import com.grack.nanojson.JsonArray;
+import com.grack.nanojson.JsonObject;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeParsingHelper;
+import org.schabi.newpipe.extractor.localization.DateWrapper;
+import org.schabi.newpipe.extractor.localization.TimeAgoParser;
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper;
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeStreamLinkHandlerFactory;
 import org.schabi.newpipe.extractor.stream.StreamInfoItemExtractor;
 import org.schabi.newpipe.extractor.stream.StreamType;
 import org.schabi.newpipe.extractor.utils.Utils;
+
+import javax.annotation.Nullable;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+
+import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.*;
+import static org.schabi.newpipe.extractor.utils.JsonUtils.EMPTY_STRING;
+import static org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty;
 
 /*
  * Copyright (C) Christian Schabesberger 2016 <chris.schabesberger@mailbox.org>
@@ -26,174 +39,228 @@ import org.schabi.newpipe.extractor.utils.Utils;
  */
 
 public class YoutubeStreamInfoItemExtractor implements StreamInfoItemExtractor {
+    private JsonObject videoInfo;
+    private final TimeAgoParser timeAgoParser;
+    private StreamType cachedStreamType;
 
-    private final Element item;
-
-    public YoutubeStreamInfoItemExtractor(Element item) {
-        this.item = item;
+    /**
+     * Creates an extractor of StreamInfoItems from a YouTube page.
+     *
+     * @param videoInfoItem The JSON page element
+     * @param timeAgoParser A parser of the textual dates or {@code null}.
+     */
+    public YoutubeStreamInfoItemExtractor(JsonObject videoInfoItem, @Nullable TimeAgoParser timeAgoParser) {
+        this.videoInfo = videoInfoItem;
+        this.timeAgoParser = timeAgoParser;
     }
 
     @Override
-    public StreamType getStreamType() throws ParsingException {
-        if (isLiveStream(item)) {
-            return StreamType.LIVE_STREAM;
-        } else {
-            return StreamType.VIDEO_STREAM;
+    public StreamType getStreamType() {
+        if (cachedStreamType != null) {
+            return cachedStreamType;
         }
+
+        final JsonArray badges = videoInfo.getArray("badges");
+        for (Object badge : badges) {
+            if (((JsonObject) badge).getObject("metadataBadgeRenderer").getString("label", EMPTY_STRING).equals("LIVE NOW")) {
+                return cachedStreamType = StreamType.LIVE_STREAM;
+            }
+        }
+
+        final String style = videoInfo.getArray("thumbnailOverlays").getObject(0)
+                .getObject("thumbnailOverlayTimeStatusRenderer").getString("style", EMPTY_STRING);
+        if (style.equalsIgnoreCase("LIVE")) {
+            return cachedStreamType = StreamType.LIVE_STREAM;
+        }
+
+        return cachedStreamType = StreamType.VIDEO_STREAM;
     }
 
     @Override
     public boolean isAd() throws ParsingException {
-        return !item.select("span[class*=\"icon-not-available\"]").isEmpty()
-                || !item.select("span[class*=\"yt-badge-ad\"]").isEmpty()
-                || isPremiumVideo();
-    }
-
-    private boolean isPremiumVideo() {
-        Element premiumSpan = item.select("span[class=\"standalone-collection-badge-renderer-red-text\"]").first();
-        if(premiumSpan == null) return false;
-
-        // if this span has text it most likely says ("Free Video") so we can play this
-        if(premiumSpan.hasText()) return false;
-        return true;
+        return isPremium() || getName().equals("[Private video]") || getName().equals("[Deleted video]");
     }
 
     @Override
     public String getUrl() throws ParsingException {
         try {
-            Element el = item.select("div[class*=\"yt-lockup-video\"").first();
-            Element dl = el.select("h3").first().select("a").first();
-            return dl.attr("abs:href");
+            String videoId = videoInfo.getString("videoId");
+            return YoutubeStreamLinkHandlerFactory.getInstance().getUrl(videoId);
         } catch (Exception e) {
-            throw new ParsingException("Could not get web page url for the video", e);
+            throw new ParsingException("Could not get url", e);
         }
     }
 
     @Override
     public String getName() throws ParsingException {
-        try {
-            Element el = item.select("div[class*=\"yt-lockup-video\"").first();
-            Element dl = el.select("h3").first().select("a").first();
-            return dl.text();
-        } catch (Exception e) {
-            throw new ParsingException("Could not get title", e);
-        }
+        String name = getTextFromObject(videoInfo.getObject("title"));
+        if (!isNullOrEmpty(name)) return name;
+        throw new ParsingException("Could not get name");
     }
 
     @Override
     public long getDuration() throws ParsingException {
-        try {
-            if (getStreamType() == StreamType.LIVE_STREAM) return -1;
-
-            final Element duration = item.select("span[class*=\"video-time\"]").first();
-            // apparently on youtube, video-time element will not show up if the video has a duration of 00:00
-            // see: https://www.youtube.com/results?sp=EgIQAVAU&q=asdfgf
-            return duration == null ? 0 : YoutubeParsingHelper.parseDurationString(duration.text());
-        } catch (Exception e) {
-            throw new ParsingException("Could not get Duration: " + getUrl(), e);
+        if (getStreamType() == StreamType.LIVE_STREAM || isPremiere()) {
+            return -1;
         }
+
+        String duration = getTextFromObject(videoInfo.getObject("lengthText"));
+
+        if (isNullOrEmpty(duration)) {
+            for (Object thumbnailOverlay : videoInfo.getArray("thumbnailOverlays")) {
+                if (((JsonObject) thumbnailOverlay).has("thumbnailOverlayTimeStatusRenderer")) {
+                    duration = getTextFromObject(((JsonObject) thumbnailOverlay)
+                            .getObject("thumbnailOverlayTimeStatusRenderer").getObject("text"));
+                }
+            }
+
+            if (isNullOrEmpty(duration)) throw new ParsingException("Could not get duration");
+        }
+
+        return YoutubeParsingHelper.parseDurationString(duration);
     }
 
     @Override
     public String getUploaderName() throws ParsingException {
-        try {
-            return item.select("div[class=\"yt-lockup-byline\"]").first()
-                    .select("a").first()
-                    .text();
-        } catch (Exception e) {
-            throw new ParsingException("Could not get uploader", e);
+        String name = getTextFromObject(videoInfo.getObject("longBylineText"));
+
+        if (isNullOrEmpty(name)) {
+            name = getTextFromObject(videoInfo.getObject("ownerText"));
+
+            if (isNullOrEmpty(name)) {
+                name = getTextFromObject(videoInfo.getObject("shortBylineText"));
+
+                if (isNullOrEmpty(name)) throw new ParsingException("Could not get uploader name");
+            }
         }
+
+        return name;
     }
 
     @Override
     public String getUploaderUrl() throws ParsingException {
-        try {
-            try {
-                return item.select("div[class=\"yt-lockup-byline\"]").first()
-                        .select("a").first()
-                        .attr("abs:href");
-            } catch (Exception e){}
+        String url = getUrlFromNavigationEndpoint(videoInfo.getObject("longBylineText")
+                .getArray("runs").getObject(0).getObject("navigationEndpoint"));
 
-            // try this if the first didn't work
-            return item.select("span[class=\"title\"")
-                    .text().split(" - ")[0];
-        } catch (Exception e) {
-            System.out.println(item.html());
-            throw new ParsingException("Could not get uploader", e);
+        if (isNullOrEmpty(url)) {
+            url = getUrlFromNavigationEndpoint(videoInfo.getObject("ownerText")
+                    .getArray("runs").getObject(0).getObject("navigationEndpoint"));
+
+            if (isNullOrEmpty(url)) {
+                url = getUrlFromNavigationEndpoint(videoInfo.getObject("shortBylineText")
+                        .getArray("runs").getObject(0).getObject("navigationEndpoint"));
+
+                if (isNullOrEmpty(url)) throw new ParsingException("Could not get uploader url");
+            }
         }
+
+        return url;
     }
 
+    @Nullable
     @Override
-    public String getUploadDate() throws ParsingException {
-        try {
-            Element meta = item.select("div[class=\"yt-lockup-meta\"]").first();
-            if (meta == null) return "";
-
-            Element li = meta.select("li").first();
-            if(li == null) return "";
-
-            return meta.select("li").first().text();
-        } catch (Exception e) {
-            throw new ParsingException("Could not get upload date", e);
+    public String getTextualUploadDate() throws ParsingException {
+        if (getStreamType().equals(StreamType.LIVE_STREAM)) {
+            return null;
         }
+
+        if (isPremiere()) {
+            final Date date = getDateFromPremiere().getTime();
+            return new SimpleDateFormat("yyyy-MM-dd HH:mm").format(date);
+        }
+
+        final String publishedTimeText = getTextFromObject(videoInfo.getObject("publishedTimeText"));
+        if (publishedTimeText != null && !publishedTimeText.isEmpty()) return publishedTimeText;
+
+        return null;
+    }
+
+    @Nullable
+    @Override
+    public DateWrapper getUploadDate() throws ParsingException {
+        if (getStreamType().equals(StreamType.LIVE_STREAM)) {
+            return null;
+        }
+
+        if (isPremiere()) {
+            return new DateWrapper(getDateFromPremiere());
+        }
+
+        final String textualUploadDate = getTextualUploadDate();
+        if (timeAgoParser != null && !isNullOrEmpty(textualUploadDate)) {
+            try {
+                return timeAgoParser.parse(textualUploadDate);
+            } catch (ParsingException e) {
+                throw new ParsingException("Could not get upload date", e);
+            }
+        }
+        return null;
     }
 
     @Override
     public long getViewCount() throws ParsingException {
-        String input;
         try {
-            // TODO: Return the actual live stream's watcher count
-            // -1 for no view count
-            if (getStreamType() == StreamType.LIVE_STREAM) return -1;
-
-            Element meta = item.select("div[class=\"yt-lockup-meta\"]").first();
-            if (meta == null) return -1;
-
-            // This case can happen if google releases a special video
-            if(meta.select("li").size() < 2)  return -1;
-
-            input = meta.select("li").get(1).text();
-
-        } catch (IndexOutOfBoundsException e) {
-            throw new ParsingException("Could not parse yt-lockup-meta although available: " + getUrl(), e);
-        }
-
-        try {
-            return Long.parseLong(Utils.removeNonDigitCharacters(input));
-        } catch (NumberFormatException e) {
-            // if this happens the video probably has no views
-            if (!input.isEmpty()){
-                return 0;
+            if (videoInfo.has("topStandaloneBadge") || isPremium()) {
+                return -1;
             }
 
-            throw new ParsingException("Could not handle input: " + input, e);
+            if (!videoInfo.has("viewCountText")) {
+                // This object is null when a video has its views hidden.
+                return -1;
+            }
+
+            final String viewCount = getTextFromObject(videoInfo.getObject("viewCountText"));
+
+            if (viewCount.toLowerCase().contains("no views")) {
+                return 0;
+            } else if (viewCount.toLowerCase().contains("recommended")) {
+                return -1;
+            }
+
+            return Long.parseLong(Utils.removeNonDigitCharacters(viewCount));
+        } catch (Exception e) {
+            throw new ParsingException("Could not get view count", e);
         }
     }
 
     @Override
     public String getThumbnailUrl() throws ParsingException {
         try {
-            String url;
-            Element te = item.select("div[class=\"yt-thumb video-thumb\"]").first()
-                    .select("img").first();
-            url = te.attr("abs:src");
-            // Sometimes youtube sends links to gif files which somehow seem to not exist
-            // anymore. Items with such gif also offer a secondary image source. So we are going
-            // to use that if we've caught such an item.
-            if (url.contains(".gif")) {
-                url = te.attr("abs:data-thumb");
-            }
-            return url;
+            // TODO: Don't simply get the first item, but look at all thumbnails and their resolution
+            String url = videoInfo.getObject("thumbnail").getArray("thumbnails")
+                    .getObject(0).getString("url");
+
+            return fixThumbnailUrl(url);
         } catch (Exception e) {
             throw new ParsingException("Could not get thumbnail url", e);
         }
     }
 
-    /**
-     * Generic method that checks if the element contains any clues that it's a livestream item
-     */
-    protected static boolean isLiveStream(Element item) {
-        return !item.select("span[class*=\"yt-badge-live\"]").isEmpty()
-                || !item.select("span[class*=\"video-time-overlay-live\"]").isEmpty();
+    private boolean isPremium() {
+        JsonArray badges = videoInfo.getArray("badges");
+        for (Object badge : badges) {
+            if (((JsonObject) badge).getObject("metadataBadgeRenderer").getString("label", EMPTY_STRING).equals("Premium")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isPremiere() {
+        return videoInfo.has("upcomingEventData");
+    }
+
+    private Calendar getDateFromPremiere() throws ParsingException {
+        final JsonObject upcomingEventData = videoInfo.getObject("upcomingEventData");
+        final String startTime = upcomingEventData.getString("startTime");
+
+        try {
+            final long startTimeTimestamp = Long.parseLong(startTime);
+            final Calendar calendar = Calendar.getInstance();
+            calendar.setTime(new Date(startTimeTimestamp * 1000L));
+            return calendar;
+        } catch (Exception e) {
+            throw new ParsingException("Could not parse date from premiere:  \"" + startTime + "\"");
+        }
     }
 }

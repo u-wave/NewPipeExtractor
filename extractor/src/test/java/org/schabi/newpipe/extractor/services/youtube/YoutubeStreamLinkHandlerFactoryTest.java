@@ -2,12 +2,11 @@ package org.schabi.newpipe.extractor.services.youtube;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.schabi.newpipe.Downloader;
+import org.schabi.newpipe.DownloaderTestImpl;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.exceptions.FoundAdException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeStreamLinkHandlerFactory;
-import org.schabi.newpipe.extractor.utils.Localization;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +23,7 @@ public class YoutubeStreamLinkHandlerFactoryTest {
     @BeforeClass
     public static void setUp() {
         linkHandler = YoutubeStreamLinkHandlerFactory.getInstance();
-        NewPipe.init(Downloader.getInstance(), new Localization("GB", "en"));
+        NewPipe.init(DownloaderTestImpl.getInstance());
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -80,6 +79,8 @@ public class YoutubeStreamLinkHandlerFactoryTest {
         assertEquals("EhxJLojIE_o", linkHandler.fromUrl("http://www.youtube.com/attribution_link?a=JdfC0C9V6ZI&u=%2Fwatch%3Fv%3DEhxJLojIE_o%26feature%3Dshare").getId());
         assertEquals("jZViOEv90dI", linkHandler.fromUrl("vnd.youtube://www.youtube.com/watch?v=jZViOEv90dI").getId());
         assertEquals("jZViOEv90dI", linkHandler.fromUrl("vnd.youtube:jZViOEv90dI").getId());
+        assertEquals("n8X9_MgEdCg", linkHandler.fromUrl("vnd.youtube://n8X9_MgEdCg").getId());
+        assertEquals("O0EDx9WAelc", linkHandler.fromUrl("https://music.youtube.com/watch?v=O0EDx9WAelc").getId());
     }
 
     @Test
@@ -98,8 +99,8 @@ public class YoutubeStreamLinkHandlerFactoryTest {
         assertTrue(linkHandler.acceptUrl("http://www.youtube.com/attribution_link?a=JdfC0C9V6ZI&u=%2Fwatch%3Fv%3DEhxJLojIE_o%26feature%3Dshare"));
         assertTrue(linkHandler.acceptUrl("vnd.youtube://www.youtube.com/watch?v=jZViOEv90dI"));
         assertTrue(linkHandler.acceptUrl("vnd.youtube:jZViOEv90dI"));
-
         assertTrue(linkHandler.acceptUrl("vnd.youtube.launch:jZViOEv90dI"));
+        assertTrue(linkHandler.acceptUrl("https://music.youtube.com/watch?v=O0EDx9WAelc"));
     }
 
     @Test
@@ -123,7 +124,7 @@ public class YoutubeStreamLinkHandlerFactoryTest {
         assertEquals("3msbfr6pBNE", linkHandler.fromUrl("hooktube.com/v/3msbfr6pBNE").getId());
         assertEquals("3msbfr6pBNE", linkHandler.fromUrl("hooktube.com/embed/3msbfr6pBNE").getId());
     }
-    
+
     @Test
     public void testAcceptInvidioUrl() throws ParsingException {
         assertTrue(linkHandler.acceptUrl("https://invidio.us/watch?v=TglNG-yjabU"));
@@ -133,7 +134,7 @@ public class YoutubeStreamLinkHandlerFactoryTest {
         assertTrue(linkHandler.acceptUrl("https://invidio.us/watch?v=ocH3oSnZG3c&test=PLS2VU1j4vzuZwooPjV26XM9UEBY2CPNn2"));
         assertTrue(linkHandler.acceptUrl("invidio.us/embed/3msbfr6pBNE"));
     }
-    
+
     @Test
     public void testGetInvidioIdfromUrl() throws ParsingException {
         assertEquals("TglNG-yjabU", linkHandler.fromUrl("https://invidio.us/watch?v=TglNG-yjabU").getId());

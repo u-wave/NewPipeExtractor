@@ -1,17 +1,22 @@
 package org.schabi.newpipe.extractor.stream;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
 import org.schabi.newpipe.extractor.Info;
 import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException;
+import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.localization.DateWrapper;
 import org.schabi.newpipe.extractor.utils.DashMpdParser;
 import org.schabi.newpipe.extractor.utils.ExtractorHelper;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+import static org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty;
 
 /*
  * Created by Christian Schabesberger on 26.08.15.
@@ -45,7 +50,7 @@ public class StreamInfo extends Info {
     }
 
     public StreamInfo(int serviceId, String url, String originalUrl, StreamType streamType, String id, String name,
-            int ageLimit) {
+                      int ageLimit) {
         super(serviceId, id, url, originalUrl, name);
         this.streamType = streamType;
         this.ageLimit = ageLimit;
@@ -100,7 +105,7 @@ public class StreamInfo extends Info {
         String name = extractor.getName();
         int ageLimit = extractor.getAgeLimit();
 
-        if ((streamType == StreamType.NONE) || (url == null || url.isEmpty()) || (id == null || id.isEmpty())
+        if ((streamType == StreamType.NONE) || isNullOrEmpty(url) || (isNullOrEmpty(id))
                 || (name == null /* streamInfo.title can be empty of course */) || (ageLimit == -1)) {
             throw new ExtractionException("Some important stream information was not given.");
         }
@@ -129,6 +134,8 @@ public class StreamInfo extends Info {
         /* Load and extract audio */
         try {
             streamInfo.setAudioStreams(extractor.getAudioStreams());
+        } catch (ContentNotSupportedException e) {
+            throw e;
         } catch (Exception e) {
             streamInfo.addError(new ExtractionException("Couldn't get audio streams", e));
         }
@@ -154,7 +161,7 @@ public class StreamInfo extends Info {
             streamInfo.setAudioStreams(new ArrayList<AudioStream>());
 
         Exception dashMpdError = null;
-        if (streamInfo.getDashMpdUrl() != null && !streamInfo.getDashMpdUrl().isEmpty()) {
+        if (!isNullOrEmpty(streamInfo.getDashMpdUrl())) {
             try {
                 DashMpdParser.ParserResult result = DashMpdParser.getStreams(streamInfo);
                 streamInfo.getVideoOnlyStreams().addAll(result.getVideoOnlyStreams());
@@ -219,6 +226,28 @@ public class StreamInfo extends Info {
             streamInfo.addError(e);
         }
         try {
+            streamInfo.setUploaderAvatarUrl(extractor.getUploaderAvatarUrl());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+
+        try {
+            streamInfo.setSubChannelName(extractor.getSubChannelName());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setSubChannelUrl(extractor.getSubChannelUrl());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setSubChannelAvatarUrl(extractor.getSubChannelAvatarUrl());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+
+        try {
             streamInfo.setDescription(extractor.getDescription());
         } catch (Exception e) {
             streamInfo.addError(e);
@@ -229,12 +258,12 @@ public class StreamInfo extends Info {
             streamInfo.addError(e);
         }
         try {
-            streamInfo.setUploadDate(extractor.getUploadDate());
+            streamInfo.setTextualUploadDate(extractor.getTextualUploadDate());
         } catch (Exception e) {
             streamInfo.addError(e);
         }
         try {
-            streamInfo.setUploaderAvatarUrl(extractor.getUploaderAvatarUrl());
+            streamInfo.setUploadDate(extractor.getUploadDate());
         } catch (Exception e) {
             streamInfo.addError(e);
         }
@@ -264,6 +293,43 @@ public class StreamInfo extends Info {
             streamInfo.addError(e);
         }
 
+        //additional info
+        try {
+            streamInfo.setHost(extractor.getHost());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setPrivacy(extractor.getPrivacy());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setCategory(extractor.getCategory());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setLicence(extractor.getLicence());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setLanguageInfo(extractor.getLanguageInfo());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setTags(extractor.getTags());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+        try {
+            streamInfo.setSupportInfo(extractor.getSupportInfo());
+        } catch (Exception e) {
+            streamInfo.addError(e);
+        }
+
         streamInfo.setRelatedStreams(ExtractorHelper.getRelatedVideosOrLogError(streamInfo, extractor));
 
         return streamInfo;
@@ -271,10 +337,11 @@ public class StreamInfo extends Info {
 
     private StreamType streamType;
     private String thumbnailUrl = "";
-    private String uploadDate = "";
+    private String textualUploadDate;
+    private DateWrapper uploadDate;
     private long duration = -1;
     private int ageLimit = -1;
-    private String description;
+    private Description description;
 
     private long viewCount = -1;
     private long likeCount = -1;
@@ -283,6 +350,10 @@ public class StreamInfo extends Info {
     private String uploaderName = "";
     private String uploaderUrl = "";
     private String uploaderAvatarUrl = "";
+
+    private String subChannelName = "";
+    private String subChannelUrl = "";
+    private String subChannelAvatarUrl = "";
 
     private List<VideoStream> videoStreams = new ArrayList<>();
     private List<AudioStream> audioStreams = new ArrayList<>();
@@ -300,6 +371,14 @@ public class StreamInfo extends Info {
 
     private long startPosition = 0;
     private List<SubtitlesStream> subtitles = new ArrayList<>();
+
+    private String host = "";
+    private String privacy = "";
+    private String category = "";
+    private String licence = "";
+    private String support = "";
+    private Locale language = null;
+    private List<String> tags = new ArrayList<>();
 
     /**
      * Get the stream type
@@ -327,11 +406,19 @@ public class StreamInfo extends Info {
         this.thumbnailUrl = thumbnailUrl;
     }
 
-    public String getUploadDate() {
+    public String getTextualUploadDate() {
+        return textualUploadDate;
+    }
+
+    public void setTextualUploadDate(String textualUploadDate) {
+        this.textualUploadDate = textualUploadDate;
+    }
+
+    public DateWrapper getUploadDate() {
         return uploadDate;
     }
 
-    public void setUploadDate(String uploadDate) {
+    public void setUploadDate(DateWrapper uploadDate) {
         this.uploadDate = uploadDate;
     }
 
@@ -356,11 +443,11 @@ public class StreamInfo extends Info {
         this.ageLimit = ageLimit;
     }
 
-    public String getDescription() {
+    public Description getDescription() {
         return description;
     }
 
-    public void setDescription(String description) {
+    public void setDescription(Description description) {
         this.description = description;
     }
 
@@ -420,6 +507,30 @@ public class StreamInfo extends Info {
 
     public void setUploaderAvatarUrl(String uploaderAvatarUrl) {
         this.uploaderAvatarUrl = uploaderAvatarUrl;
+    }
+
+    public String getSubChannelName() {
+        return subChannelName;
+    }
+
+    public void setSubChannelName(String subChannelName) {
+        this.subChannelName = subChannelName;
+    }
+
+    public String getSubChannelUrl() {
+        return subChannelUrl;
+    }
+
+    public void setSubChannelUrl(String subChannelUrl) {
+        this.subChannelUrl = subChannelUrl;
+    }
+
+    public String getSubChannelAvatarUrl() {
+        return subChannelAvatarUrl;
+    }
+
+    public void setSubChannelAvatarUrl(String subChannelAvatarUrl) {
+        this.subChannelAvatarUrl = subChannelAvatarUrl;
     }
 
     public List<VideoStream> getVideoStreams() {
@@ -518,4 +629,59 @@ public class StreamInfo extends Info {
         this.subtitles = subtitles;
     }
 
+    public String getHost() {
+        return this.host;
+    }
+
+    public void setHost(String str) {
+        this.host = str;
+    }
+
+    public String getPrivacy() {
+        return this.privacy;
+    }
+
+    public void setPrivacy(String str) {
+        this.privacy = str;
+    }
+
+    public String getCategory() {
+        return this.category;
+    }
+
+    public void setCategory(String cat) {
+        this.category = cat;
+    }
+
+    public String getLicence() {
+        return this.licence;
+    }
+
+    public void setLicence(String str) {
+        this.licence = str;
+    }
+
+    public Locale getLanguageInfo() {
+        return this.language;
+    }
+
+    public void setLanguageInfo(Locale lang) {
+        this.language = lang;
+    }
+
+    public List<String> getTags() {
+        return this.tags;
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags;
+    }
+
+    public void setSupportInfo(String support) {
+        this.support = support;
+    }
+
+    public String getSupportInfo() {
+        return this.support;
+    }
 }

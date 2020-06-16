@@ -1,11 +1,11 @@
 package org.schabi.newpipe.extractor.comments;
 
-import java.util.List;
-import java.util.Vector;
-
 import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.InfoItemsCollector;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
+
+import java.util.List;
+import java.util.Vector;
 
 public class CommentsInfoItemsCollector extends InfoItemsCollector<CommentsInfoItem, CommentsInfoItemExtractor> {
 
@@ -35,22 +35,27 @@ public class CommentsInfoItemsCollector extends InfoItemsCollector<CommentsInfoI
             addError(e);
         }
         try {
-            resultItem.setAuthorName(extractor.getAuthorName());
+            resultItem.setUploaderName(extractor.getUploaderName());
         } catch (Exception e) {
             addError(e);
         }
         try {
-            resultItem.setAuthorThumbnail(extractor.getAuthorThumbnail());
+            resultItem.setUploaderAvatarUrl(extractor.getUploaderAvatarUrl());
         } catch (Exception e) {
             addError(e);
         }
         try {
-            resultItem.setAuthorEndpoint(extractor.getAuthorEndpoint());
+            resultItem.setUploaderUrl(extractor.getUploaderUrl());
         } catch (Exception e) {
             addError(e);
         }
         try {
-            resultItem.setPublishedTime(extractor.getPublishedTime());
+            resultItem.setTextualUploadDate(extractor.getTextualUploadDate());
+        } catch (Exception e) {
+            addError(e);
+        }
+        try {
+            resultItem.setUploadDate(extractor.getUploadDate());
         } catch (Exception e) {
             addError(e);
         }

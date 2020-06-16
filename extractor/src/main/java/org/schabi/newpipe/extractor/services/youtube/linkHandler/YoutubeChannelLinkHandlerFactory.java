@@ -2,6 +2,7 @@ package org.schabi.newpipe.extractor.services.youtube.linkHandler;
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper;
 import org.schabi.newpipe.extractor.utils.Utils;
 
 import java.net.URL;
@@ -35,6 +36,14 @@ public class YoutubeChannelLinkHandlerFactory extends ListLinkHandlerFactory {
         return instance;
     }
 
+    /**
+     * Returns URL to channel from an ID
+     *
+     * @param id Channel ID including e.g. 'channel/'
+     * @param contentFilters
+     * @param searchFilter
+     * @return URL to channel
+     */
     @Override
     public String getUrl(String id, List<String> contentFilters, String searchFilter) {
         return "https://www.youtube.com/" + id;
@@ -51,7 +60,7 @@ public class YoutubeChannelLinkHandlerFactory extends ListLinkHandlerFactory {
                 throw new ParsingException("the URL given is not a Youtube-URL");
             }
 
-            if (!path.startsWith("/user/") && !path.startsWith("/channel/")) {
+            if (!path.startsWith("/user/") && !path.startsWith("/channel/") && !path.startsWith("/c/")) {
                 throw new ParsingException("the URL given is neither a channel nor an user");
             }
 
